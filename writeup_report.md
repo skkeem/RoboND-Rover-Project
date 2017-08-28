@@ -27,7 +27,7 @@
 [image4]: ./output/warped_threshed_obstacles.jpg
 [image5]: ./output/warped_threshed_clipped_obstacles.jpg
 [image6]: ./output/threshed_rock.jpg
-[image7]: ./output/capture.jpg
+[image7]: ./output/capture.JPG
 
 ## [Rubric](https://review.udacity.com/#!/rubrics/916/view) Points
 ### Here I will consider the rubric points individually and describe how I addressed each point in my implementation.
