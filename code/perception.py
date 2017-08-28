@@ -17,6 +17,40 @@ def color_thresh(img, rgb_thresh=(160, 160, 160)):
     # Return the binary image
     return color_select
 
+def color_bel_thresh(img, rgb_thresh=(160, 160, 160)):
+    # Create an array of zeros same xy size as img, but single channel
+    color_select = np.zeros_like(img[:,:,0])
+    # Require that each pixel be above all three threshold values in RGB
+    # above_thresh will now contain a boolean array with "True"
+    # where threshold was met
+    above_thresh = ~ ((img[:,:,0] > rgb_thresh[0]) \
+                & (img[:,:,1] > rgb_thresh[1]) \
+                & (img[:,:,2] > rgb_thresh[2]))
+    # Index the array of zeros with the boolean array and set to 1
+    color_select[above_thresh] = 1
+    # Return the binary image
+    return color_select
+
+def color_bet_thresh(img, lb=(100, 100, 0), ub=(255, 255, 50)):
+    # Create an array of zeros same xy size as img, but single channel
+    color_select = np.zeros_like(img[:,:,0])
+    # Require that each pixel be above all three threshold values in RGB
+    # above_thresh will now contain a boolean array with "True"
+    # where threshold was met
+    above_thresh = (lb[0] <= img[:,:,0]) & (img[:,:,0] <= ub[0]) \
+                & (lb[1] <= img[:,:,1]) & (img[:,:,1] <= ub[1]) \
+                & (lb[2] <= img[:,:,2]) & (img[:,:,2] <= ub[2])
+    # Index the array of zeros with the boolean array and set to 1
+    color_select[above_thresh] = 1
+    # Return the binary image
+    return color_select
+
+def clip_img(img, src, dst):
+    mask = perspect_transform(np.ones_like(img), src, dst)
+    clipped = mask & img
+    return clipped
+
+
 # Define a function to convert from image coords to rover coords
 def rover_coords(binary_img):
     # Identify nonzero pixels
@@ -102,8 +136,49 @@ def perception_step(Rover):
     # Update Rover pixel distances and angles
         # Rover.nav_dists = rover_centric_pixel_distances
         # Rover.nav_angles = rover_centric_angles
-    
+    img = Rover.img
+    # parameters
+    dst_size = 5
+    bottom_offset = 6
+    source = np.float32([[14, 140], [301, 140], [200, 96], [118, 96]])
+    destination = np.float32([[img.shape[1]/2 - dst_size, img.shape[0] - bottom_offset],
+                            [img.shape[1]/2 + dst_size, img.shape[0] - bottom_offset],
+                            [img.shape[1]/2 + dst_size, img.shape[0] - 2*dst_size - bottom_offset],
+                            [img.shape[1]/2 - dst_size, img.shape[0] - 2*dst_size - bottom_offset]
+                            ])
+
+    warped = perspect_transform(img, source, destination)
+    terrain = color_thresh(warped)
+    obstacles = clip_img(color_bel_thresh(warped), source, destination)
+    rock = color_bet_thresh(warped)
+    Rover.vision_image[:,:,0] = 255*obstacles
+    Rover.vision_image[:,:,1] = 255*rock
+    Rover.vision_image[:,:,2] = 255*terrain
  
-    
+    tx, ty = rover_coords(terrain)
+    ox, oy = rover_coords(obstacles)
+    rx, ry = rover_coords(rock)
+    scale = 2*dst_size
+    txx, tyy = pix_to_world(tx, ty, Rover.pos[0], Rover.pos[1], Rover.yaw, Rover.worldmap.shape[0], scale)
+    oxx, oyy = pix_to_world(ox, oy, Rover.pos[0], Rover.pos[1], Rover.yaw, Rover.worldmap.shape[0], scale)
+    rxx, ryy = pix_to_world(rx, ry, Rover.pos[0], Rover.pos[1], Rover.yaw, Rover.worldmap.shape[0], scale)
+    Rover.worldmap[oyy, oxx, 0] += 1
+    #Rover.worldmap[ryy, rxx, 1] += 1
+    Rover.worldmap[tyy, txx, 2] += 10
+
+    td, ta = to_polar_coords(tx, ty)
+    Rover.nav_dists = td
+    Rover.nav_angles = ta
+
+    rd, ra = to_polar_coords(rx, ry)
+    Rover.rock_dists = rd
+    Rover.rock_angles = ra
+
+    if rock.any():
+        ri = np.argmin(rd)
+        rxc = rxx[ri]
+        ryc = ryy[ri]
+
+        Rover.worldmap[ryc, rxc, 1] = 255
     
     return Rover
